@@ -39,10 +39,10 @@ export default function Dashboard() {
   };
 
 const isNewFilm = (dateString: string) => {
-    if (!dateString) return false;
-    const diffDays = Math.ceil(Math.abs(new Date() - new Date(dateString)) / (1000 * 60 * 60 * 24)); 
-    return diffDays <= 7;
-  };
+  if (!dateString) return false;
+  const diffDays = Math.ceil(Math.abs(new Date().getTime() - new Date(dateString).getTime()) / (1000 * 60 * 60 * 24));
+  return diffDays <= 7;
+};
 
   // --- ADVANCED SEARCH FILTER LOGIC ---
   const matchesSearch = (film, query) => {
