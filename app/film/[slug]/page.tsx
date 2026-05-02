@@ -9,8 +9,10 @@ import {
 import { createClient } from "../../../utils/supabase/client";
 import Hls from "hls.js";
 
-export default function FilmDetails({ params }) {
-  const supabase = createClient();
+
+export default function FilmDetails({ params }: any) {
+
+const supabase = createClient();
   const [slug, setSlug] = useState("");
   const [film, setFilm] = useState(null);
   const [similarFilms, setSimilarFilms] = useState([]);
