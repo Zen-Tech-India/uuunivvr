@@ -24,17 +24,18 @@ export default function UploadStudio() {
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [studioInfo, setStudioInfo] = useState({ name: "", logo: "", isStaff: false });
 
-  // Upload States
-  const [featureFile, setFeatureFile] = useState(null);
-  const [trailerFile, setTrailerFile] = useState(null);
-  const [previewVideoUrl, setPreviewVideoUrl] = useState(null);
-  const [previewTrailerUrl, setPreviewTrailerUrl] = useState(null);
+  // Upload States - Typed with <any> to prevent strict null assignment errors
+  const [featureFile, setFeatureFile] = useState<any>(null);
+  const [trailerFile, setTrailerFile] = useState<any>(null);
+  const [previewVideoUrl, setPreviewVideoUrl] = useState<any>(null);
+  const [previewTrailerUrl, setPreviewTrailerUrl] = useState<any>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatusText, setUploadStatusText] = useState("");
 
-  const featureInputRef = useRef(null);
-  const trailerInputRef = useRef(null);
+  // Refs - Typed with <any>
+  const featureInputRef = useRef<any>(null);
+  const trailerInputRef = useRef<any>(null);
 
   // Form Data
   const [formData, setFormData] = useState({
@@ -54,12 +55,13 @@ export default function UploadStudio() {
       }
 
       const email = session.user.email;
-      const { data: userData } = await supabase.from("zen_tech_users").select("*").ilike("email", email).maybeSingle();
+      // THE FIX: Added || "" so TypeScript knows it will absolutely be a string
+      const { data: userData } = await supabase.from("zen_tech_users").select("*").ilike("email", email || "").maybeSingle();
 
       if (userData) {
         if (userData.account_tier === 'staff' || userData.account_tier === 'production') {
           setIsAuthorized(true);
-          const isStaff = STAFF_EMAILS.includes(email.toLowerCase());
+          const isStaff = STAFF_EMAILS.includes((email || "").toLowerCase());
           
           setStudioInfo({
             name: isStaff ? "Zenteku Films" : (userData.full_name || "Independent Studio"),
@@ -79,7 +81,8 @@ export default function UploadStudio() {
   }, []);
 
   // --- 2. VIDEO VALIDATION ---
-  const validateVideoFile = (file, isTrailer = false) => {
+  // Explicitly type 'file'
+  const validateVideoFile = (file: any, isTrailer = false) => {
     return new Promise((resolve) => {
       if (!file.type.startsWith('video/')) {
         Swal.fire({ icon: 'error', title: 'Invalid Format', text: 'Images and GIFs are strictly prohibited. Please upload a valid video file (.mp4, .mov).', background: '#0a0a0a', color: '#ffffff' });
@@ -109,7 +112,8 @@ export default function UploadStudio() {
     });
   };
 
-  const handleFeatureUpload = async (e) => {
+  // Explicitly type 'e'
+  const handleFeatureUpload = async (e: any) => {
     const file = e.target.files[0];
     if (file) {
       const isValid = await validateVideoFile(file, false);
@@ -122,7 +126,8 @@ export default function UploadStudio() {
     }
   };
 
-  const handleTrailerUpload = async (e) => {
+  // Explicitly type 'e'
+  const handleTrailerUpload = async (e: any) => {
     const file = e.target.files[0];
     if (file) {
       const isValid = await validateVideoFile(file, true);
@@ -135,26 +140,26 @@ export default function UploadStudio() {
     }
   };
 
-  const handleCastChange = (index, field, value) => {
-    const newCast = [...formData.cast];
+  // Explicitly type index, field, and value
+  const handleCastChange = (index: number, field: string, value: string) => {
+    const newCast: any[] = [...formData.cast];
     newCast[index][field] = value;
     setFormData({ ...formData, cast: newCast });
   };
   const addCastMember = () => setFormData({ ...formData, cast: [...formData.cast, { name: "", role: "" }] });
-  const removeCastMember = (index) => {
+  const removeCastMember = (index: number) => {
     const newCast = [...formData.cast];
     newCast.splice(index, 1);
     setFormData({ ...formData, cast: newCast });
   };
 
   // --- 3. BUNNY.NET REAL UPLOAD LOGIC ---
-  const uploadToBunny = async (file, title, isTrailer = false) => {
-    // Check if env variables are loaded correctly
+  // Explicitly type file and title
+  const uploadToBunny = async (file: any, title: string, isTrailer = false) => {
     if (!BUNNY_API_KEY || !BUNNY_LIBRARY_ID) {
       throw new Error("Bunny.net API keys are missing. Please check your .env.local file.");
     }
 
-    // Step 1: Create Video Object in Bunny.net
     const createRes = await fetch(`https://video.bunnycdn.com/library/${BUNNY_LIBRARY_ID}/videos`, {
       method: 'POST',
       headers: { 
@@ -168,7 +173,6 @@ export default function UploadStudio() {
     if (!createRes.ok) throw new Error("Failed to create video entry in Bunny CDN.");
     const { guid } = await createRes.json();
 
-    // Step 2: Upload Binary with Real Progress Bar
     await new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("PUT", `https://video.bunnycdn.com/library/${BUNNY_LIBRARY_ID}/videos/${guid}`, true);
@@ -192,7 +196,6 @@ export default function UploadStudio() {
       xhr.send(file);
     });
 
-    // Step 3: Return the formatted HLS and Thumbnail URLs
     return {
       videoUrl: `https://${BUNNY_PULL_ZONE}/${guid}/playlist.m3u8`,
       thumbnailUrl: `https://${BUNNY_PULL_ZONE}/${guid}/thumbnail.jpg`
@@ -209,11 +212,9 @@ export default function UploadStudio() {
     setUploadProgress(0);
 
     try {
-      // 1. Upload Main Feature
       setUploadStatusText("Transmitting Master Film to CDN...");
       const featureData = await uploadToBunny(featureFile, `${formData.title} - Main Feature`, false);
       
-      // 2. Upload Trailer (If exists)
       let trailerUrl = null;
       if (trailerFile) {
         setUploadStatusText("Transmitting Promotional Trailer...");
@@ -223,7 +224,6 @@ export default function UploadStudio() {
 
       setUploadStatusText("Syncing with Supabase Mainframe...");
 
-      // 3. Save to Supabase
       const generatedSlug = formData.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
 
       const { error } = await supabase.from('uuunivvr_films').insert([{
@@ -248,7 +248,7 @@ export default function UploadStudio() {
         window.location.href = `/film/${generatedSlug}`;
       });
 
-    } catch (err) {
+    } catch (err: any) { // Explicitly typed error
       setIsUploading(false);
       Swal.fire({ icon: 'error', title: 'Upload Failed', text: err.message, background: '#0a0a0a', color: '#ffffff' });
     }
@@ -322,7 +322,7 @@ export default function UploadStudio() {
 
           <h3 className="text-sm font-black text-white uppercase tracking-widest mb-4">Cast & Crew</h3>
           <div className="flex flex-wrap gap-4">
-            {formData.cast.map((c, i) => (
+            {formData.cast.map((c: any, i: number) => (
               <div key={i} className="flex items-center gap-3 bg-[#111] p-2 pr-4 rounded-full border border-white/5">
                 <div className="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center text-neutral-500 font-bold text-xs">
                   {c.name ? c.name.charAt(0).toUpperCase() : <User size={14} />}
@@ -364,12 +364,12 @@ export default function UploadStudio() {
 
           <div className="flex flex-col gap-2">
             <label className="text-[10px] font-black text-neutral-500 tracking-widest uppercase">Master Title</label>
-            <input type="text" placeholder="e.g. Udaan: A Journey to Server" className="bg-[#0a0a0a] border border-white/10 rounded-xl p-4 text-white focus:border-red-600 outline-none transition-colors shadow-inner text-lg font-bold" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} />
+            <input type="text" placeholder="e.g. Udaan: A Journey to Server" className="bg-[#0a0a0a] border border-white/10 rounded-xl p-4 text-white focus:border-red-600 outline-none transition-colors shadow-inner text-lg font-bold" value={formData.title} onChange={(e: any) => setFormData({...formData, title: e.target.value})} />
           </div>
 
           <div className="flex flex-col gap-2">
             <label className="text-[10px] font-black text-neutral-500 tracking-widest uppercase">Cinematic Synopsis</label>
-            <textarea rows={4} placeholder="Describe the plot..." className="bg-[#0a0a0a] border border-white/10 rounded-xl p-4 text-white focus:border-red-600 outline-none transition-colors shadow-inner resize-none" value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} />
+            <textarea rows={4} placeholder="Describe the plot..." className="bg-[#0a0a0a] border border-white/10 rounded-xl p-4 text-white focus:border-red-600 outline-none transition-colors shadow-inner resize-none" value={formData.description} onChange={(e: any) => setFormData({...formData, description: e.target.value})} />
           </div>
 
           {/* Trailer Upload (Max 60s) */}
@@ -392,11 +392,11 @@ export default function UploadStudio() {
               <button type="button" onClick={addCastMember} className="text-red-500 hover:text-red-400 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1"><Plus size={12}/> Add Member</button>
             </div>
             
-            {formData.cast.map((member, index) => (
+            {formData.cast.map((member: any, index: number) => (
               <div key={index} className="flex items-center gap-3 bg-[#0a0a0a] p-2 rounded-xl border border-white/5">
-                <input type="text" placeholder="Full Name" className="bg-transparent border-none text-white text-sm outline-none flex-1 px-2" value={member.name} onChange={(e) => handleCastChange(index, "name", e.target.value)} />
+                <input type="text" placeholder="Full Name" className="bg-transparent border-none text-white text-sm outline-none flex-1 px-2" value={member.name} onChange={(e: any) => handleCastChange(index, "name", e.target.value)} />
                 <div className="w-px h-6 bg-white/10"></div>
-                <input type="text" placeholder="Role / Character" className="bg-transparent border-none text-white text-sm outline-none flex-1 px-2" value={member.role} onChange={(e) => handleCastChange(index, "role", e.target.value)} />
+                <input type="text" placeholder="Role / Character" className="bg-transparent border-none text-white text-sm outline-none flex-1 px-2" value={member.role} onChange={(e: any) => handleCastChange(index, "role", e.target.value)} />
                 {index > 0 && (
                   <button type="button" onClick={() => removeCastMember(index)} className="text-neutral-600 hover:text-red-500 p-2 transition-colors"><X size={16}/></button>
                 )}
