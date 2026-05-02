@@ -15,7 +15,7 @@ export default function FilmDetails({ params }: any) {
 const supabase = createClient();
   const [slug, setSlug] = useState("");
   const [film, setFilm] = useState(null);
-  const [similarFilms, setSimilarFilms] = useState([]);
+const [similarFilms, setSimilarFilms] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Background Trailer State
