@@ -21,13 +21,15 @@ export default function Dashboard() {
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   
-  const [currentUser, setCurrentUser] = useState(null);
+  // Added <any> to prevent strict mode from throwing "Object is of type 'unknown'"
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [isEmailLocked, setIsEmailLocked] = useState(false);
   const [activeTab, setActiveTab] = useState("activity"); 
 
-  const [allUsers, setAllUsers] = useState([]);
-  const [films, setFilms] = useState([]);
-  const [watchHistory, setWatchHistory] = useState([]); // State to hold user's watch history
+  // Added <any[]> to prevent strict mode from assuming 'never[]'
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [films, setFilms] = useState<any[]>([]);
+  const [watchHistory, setWatchHistory] = useState<any[]>([]); 
 
   const [formData, setFormData] = useState({ name: "", email: "", phone: "", avatar: "", gender: "" });
 
@@ -38,23 +40,24 @@ export default function Dashboard() {
     return result;
   };
 
-const isNewFilm = (dateString: string) => {
-  if (!dateString) return false;
-const diffDays = Math.ceil(Math.abs(new Date().getTime() - new Date(dateString).getTime()) / (1000 * 60 * 60 * 24));  
-  return diffDays <= 7;
-};
+  const isNewFilm = (dateString: string) => {
+    if (!dateString) return false;
+    const diffDays = Math.ceil(Math.abs(new Date().getTime() - new Date(dateString).getTime()) / (1000 * 60 * 60 * 24));  
+    return diffDays <= 7;
+  };
 
-const matchesSearch = (film: any, query: string) => {
+  const matchesSearch = (film: any, query: string) => {
     const q = query.toLowerCase();
     const matchesTitle = film.title?.toLowerCase().includes(q);
     const matchesHouse = film.production_house_name?.toLowerCase().includes(q);
     return matchesTitle || matchesHouse;
-};
+  };
 
   // --- CORE LOGIC & AUTH ---
   useEffect(() => {
     let isMounted = true;
-    let realtimeSubscription = null;
+    // Explicitly typed as 'any' to bypass strict null checks
+    let realtimeSubscription: any = null;
 
     const safetyTimeout = setTimeout(() => {
       if (isMounted && isLoading) {
@@ -63,10 +66,11 @@ const matchesSearch = (film: any, query: string) => {
       }
     }, 8000);
 
-    const setupRealtimeListener = (userEmail) => {
+    // Typed userEmail
+    const setupRealtimeListener = (userEmail: string) => {
       if (realtimeSubscription) supabase.removeChannel(realtimeSubscription);
       realtimeSubscription = supabase.channel(`user_status_${userEmail}`)
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'zen_tech_users', filter: `email=eq.${userEmail}` }, (payload) => {
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'zen_tech_users', filter: `email=eq.${userEmail}` }, (payload: any) => {
             if (payload.new.is_subscribed === false && payload.new.is_staff === false) window.location.href = '/subscription';
         }).subscribe();
     };
@@ -75,8 +79,6 @@ const matchesSearch = (film: any, query: string) => {
       const { data: filmsData } = await supabase.from("uuunivvr_films").select("*").order('created_at', { ascending: false });
       if (filmsData && filmsData.length > 0 && isMounted) {
         setFilms(filmsData);
-        // For demonstration: MOCK Watch History by grabbing 2 random films if available
-        // In production, fetch this from a 'watch_history' relation or JSON column in 'zen_tech_users'
         setWatchHistory(filmsData.slice(0, 2)); 
       }
       
@@ -84,7 +86,8 @@ const matchesSearch = (film: any, query: string) => {
       if (usersData && isMounted) setAllUsers(usersData);
     };
 
-    const processUser = async (session) => {
+    // Typed session
+    const processUser = async (session: any) => {
       try {
         if (!session?.user?.email) throw new Error("No user email found.");
         const email = session.user.email;
@@ -112,7 +115,8 @@ const matchesSearch = (film: any, query: string) => {
           clearTimeout(safetyTimeout); setIsLoading(false); 
           if (window.location.href.includes("code=") || window.location.href.includes("access_token=")) window.history.replaceState({}, document.title, window.location.pathname);
         }
-      } catch (err) {
+      } catch (err: any) {
+        // Typed err as any to prevent err.message failure
         if (isMounted) { clearTimeout(safetyTimeout); setIsLoading(false); Swal.fire({ icon: 'error', title: 'Sync Failed', text: err.message, background: '#030303', color: '#ffffff' }); }
       }
     };
@@ -127,7 +131,8 @@ const matchesSearch = (film: any, query: string) => {
       if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) processUser(session);
     });
 
-    const handleKeyDown = (e) => {
+    // Typed e
+    const handleKeyDown = (e: any) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); setShowSearch(true); }
       if (e.key === 'Escape') setShowSearch(false);
     };
@@ -136,7 +141,8 @@ const matchesSearch = (film: any, query: string) => {
     return () => { isMounted = false; clearTimeout(safetyTimeout); subscription.unsubscribe(); window.removeEventListener('keydown', handleKeyDown); if (realtimeSubscription) supabase.removeChannel(realtimeSubscription); };
   }, []); 
 
-  const handleCompleteIntro = async (e) => {
+  // Typed e
+  const handleCompleteIntro = async (e: any) => {
     e.preventDefault();
     if (!formData.name || !formData.email || !formData.phone || !formData.gender) return Swal.fire({ icon: 'error', title: 'Error', text: 'Fill all fields.', background: '#030303', color: '#ffffff' });
     Swal.fire({ title: 'Encrypting...', background: '#030303', color: '#ffffff', allowOutsideClick: false, didOpen: () => { Swal.showLoading() }});
@@ -147,7 +153,8 @@ const matchesSearch = (film: any, query: string) => {
         is_subscribed: isStaff, is_staff: isStaff, profile_id: generateProfileId(), account_tier: isStaff ? 'staff' : 'viewer', is_verified: isStaff
     }]);
 
-    if (error) { error.code === '23505' ? window.location.reload() : Swal.fire({ icon: 'error', title: 'DB Error', text: error.message, background: '#030303', color: '#ffffff' }); } 
+    // Typed error as any
+    if (error) { (error as any).code === '23505' ? window.location.reload() : Swal.fire({ icon: 'error', title: 'DB Error', text: error.message, background: '#030303', color: '#ffffff' }); } 
     else { Swal.close(); !isStaff ? window.location.href = '/subscription' : window.location.reload(); }
   };
 
@@ -159,7 +166,6 @@ const matchesSearch = (film: any, query: string) => {
 
   if (isLoading) return <main className="min-h-screen bg-[#000] flex flex-col items-center justify-center"><div className="w-8 h-8 border-t-2 border-red-600 rounded-full animate-spin mb-4"></div><p className="text-neutral-500 text-[9px] uppercase tracking-[0.3em]">Connecting</p></main>;
 
-  // --- ULTRA PREMIUM UI RENDERS ---
   return (
     <main className="min-h-screen bg-[#000] text-white font-sans overflow-x-hidden flex flex-col selection:bg-red-900/40">
       <style dangerouslySetInnerHTML={{__html: ` .custom-scrollbar::-webkit-scrollbar { width: 2px; height: 2px; } .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); } `}} />
@@ -173,7 +179,6 @@ const matchesSearch = (film: any, query: string) => {
           </div>
           <div className="hidden lg:flex items-center gap-8 text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">
             <a href="#" className="text-white hover:text-white transition-colors">Home</a>
-            {/* Removed Originals, VFX, My List as requested */}
             {currentUser?.account_tier === 'production' || currentUser?.is_staff ? (
               <a href="/upload" className="hover:text-red-500 transition-colors flex items-center gap-1.5 text-red-600/80">
                 Studio <ShieldCheck size={10}/>
@@ -188,8 +193,6 @@ const matchesSearch = (film: any, query: string) => {
             <span className="text-[9px] font-bold tracking-[0.15em] w-32 text-neutral-500">SEARCH...</span>
             <span className="text-[8px] bg-white/[0.05] px-1.5 py-0.5 rounded text-neutral-400 font-black tracking-widest border border-white/[0.02]">⌘K</span>
           </div>
-          
-          {/* Removed Bell Notification Icon */}
           
           <div className="flex items-center gap-4 pl-6 border-l border-white/[0.05]">
             <div className="text-right hidden sm:block cursor-pointer" onClick={() => setShowProfile(true)}>
@@ -223,7 +226,7 @@ const matchesSearch = (film: any, query: string) => {
                     <div>
                       <p className="text-[8px] text-neutral-600 font-black tracking-[0.2em] uppercase mb-4 px-4">Film Assets</p>
                       <div className="flex flex-col">
-                        {films.filter(f => matchesSearch(f, searchQuery)).map(film => (
+                        {films.filter(f => matchesSearch(f, searchQuery)).map((film: any) => (
                           <div key={film.id} onClick={() => window.location.href=`/film/${film.slug}`} className="flex items-center gap-4 px-4 py-2 hover:bg-white/[0.02] cursor-pointer transition-colors">
                             <div className="w-16 h-9 bg-neutral-900 rounded-sm overflow-hidden flex-shrink-0"><img src={film.poster_url} className="w-full h-full object-cover opacity-70" /></div>
                             <div>
@@ -239,7 +242,7 @@ const matchesSearch = (film: any, query: string) => {
                     <div>
                       <p className="text-[8px] text-red-900 font-black tracking-[0.2em] uppercase mb-4 px-4">Secure Directory</p>
                       <div className="flex flex-col">
-                        {allUsers.filter(u => u.full_name.toLowerCase().includes(searchQuery.toLowerCase())).map(user => (
+                        {allUsers.filter(u => u.full_name.toLowerCase().includes(searchQuery.toLowerCase())).map((user: any) => (
                           <div key={user.profile_id} className="flex items-center gap-4 px-4 py-2 hover:bg-white/[0.02] cursor-pointer transition-colors">
                             <div className="w-6 h-6 rounded-full bg-neutral-900 overflow-hidden"><img src={user.avatar_url} className="w-full h-full object-cover opacity-50" /></div>
                             <div>
@@ -306,7 +309,7 @@ const matchesSearch = (film: any, query: string) => {
                       
                       {watchHistory.length > 0 ? (
                         <div className="flex gap-4 overflow-x-auto custom-scrollbar pb-4">
-                          {watchHistory.map((histFilm) => (
+                          {watchHistory.map((histFilm: any) => (
                              <div key={histFilm.id} onClick={() => window.location.href=`/film/${histFilm.slug}`} className="min-w-[200px] cursor-pointer group">
                                <div className="w-full aspect-video rounded border border-white/[0.03] overflow-hidden mb-3 relative bg-[#030303]">
                                  <img src={histFilm.poster_url} className="w-full h-full object-cover opacity-50 group-hover:opacity-100 transition-opacity" />
@@ -404,7 +407,7 @@ const matchesSearch = (film: any, query: string) => {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-              {films.map((film) => (
+              {films.map((film: any) => (
                 <div key={film.id} onClick={() => window.location.href=`/film/${film.slug}`} className="group cursor-pointer">
                   {/* CHANGED: aspect-video (16:9 YouTube Thumbnail ratio) instead of portrait */}
                   <div className="relative aspect-video rounded-md overflow-hidden bg-[#030303] border border-white/[0.02] group-hover:border-white/10 transition-colors shadow-lg">
