@@ -11,7 +11,8 @@ export default function SubscriptionPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isYearly, setIsYearly] = useState(true); 
 
-  const handleSubscribe = async (planName) => {
+  // Fix: Explicitly type 'planName' as a string
+  const handleSubscribe = async (planName: string) => {
     setIsProcessing(true);
     const billingCycle = isYearly ? "Yearly" : "Monthly";
     
