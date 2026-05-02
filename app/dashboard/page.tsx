@@ -44,20 +44,12 @@ const diffDays = Math.ceil(Math.abs(new Date().getTime() - new Date(dateString).
   return diffDays <= 7;
 };
 
-  // --- ADVANCED SEARCH FILTER LOGIC ---
-  const matchesSearch = (film, query) => {
+const matchesSearch = (film: any, query: string) => {
     const q = query.toLowerCase();
     const matchesTitle = film.title?.toLowerCase().includes(q);
     const matchesHouse = film.production_house_name?.toLowerCase().includes(q);
-    
-    // Check if any cast member's name matches the query
-    let matchesCast = false;
-    if (film.cast_crew && Array.isArray(film.cast_crew)) {
-      matchesCast = film.cast_crew.some(member => member.name?.toLowerCase().includes(q));
-    }
-    
-    return matchesTitle || matchesHouse || matchesCast;
-  };
+    return matchesTitle || matchesHouse;
+};
 
   // --- CORE LOGIC & AUTH ---
   useEffect(() => {
