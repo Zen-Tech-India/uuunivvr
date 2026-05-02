@@ -40,7 +40,7 @@ export default function Dashboard() {
 
 const isNewFilm = (dateString: string) => {
   if (!dateString) return false;
-  const diffDays = Math.ceil(Math.abs(new Date().getTime() - new Date(dateString).getTime()) / (1000 * 60 * 60 * 24));
+const diffDays = Math.ceil(Math.abs(new Date().getTime() - new Date(dateString).getTime()) / (1000 * 60 * 60 * 24));  
   return diffDays <= 7;
 };
 
