@@ -2,7 +2,8 @@
 
 import React, { useState } from "react";
 import { Mail, Lock, LogIn, MonitorPlay, Clapperboard } from "lucide-react";
-import { createClient } from "../utils/supabase/client";import Swal from "sweetalert2";
+import { createClient } from "../utils/supabase/client";
+import Swal from "sweetalert2";
 
 export default function Login() {
   const supabase = createClient();
@@ -13,7 +14,8 @@ export default function Login() {
   const [isProcessing, setIsProcessing] = useState(false);
 
   // --- MANUAL EMAIL/PASSWORD LOGIN ---
-  const handleManualLogin = async (e) => {
+  // Fix: Explicitly type 'e' as 'any'
+  const handleManualLogin = async (e: any) => {
     e.preventDefault();
     
     if (!email || !password) {
@@ -82,7 +84,8 @@ export default function Login() {
     }
   };
 
-  const posters = [
+  // Fix: Explicitly type arrays to prevent any strict mode inference issues
+  const posters: string[] = [
     "https://image2url.com/images/1762967507553-b462ecc0-4322-4dde-b962-60d613562a90.jpeg",
     "https://image2url.com/images/1762966618615-b0343b69-12e5-4a49-a806-53adaf806e91.jpeg",
     "https://zenteku.vercel.app/assets/error-404-banner.png",
@@ -91,7 +94,7 @@ export default function Login() {
     "https://image2url.com/images/1762967097834-956de445-a729-448e-84db-5e0cbd2683b4.jpeg",
   ];
 
-  const scrollList = [...posters, ...posters, ...posters];
+  const scrollList: string[] = [...posters, ...posters, ...posters];
 
   return (
     <main suppressHydrationWarning className="h-[100dvh] w-screen flex overflow-hidden bg-[#050505] font-sans relative">
@@ -107,10 +110,10 @@ export default function Login() {
         <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-[#050505] to-transparent z-10 pointer-events-none"></div>
 
         <div className="w-full h-full flex gap-4 overflow-hidden z-0">
-          <div className="flex-1 relative h-[200%]"><div className="flex flex-col gap-4 animate-scroll-down w-full absolute top-0">{scrollList.map((src, i) => (<div key={`c1-${i}`} className="w-full aspect-[2/3] rounded-md overflow-hidden relative border border-white/5"><img src={src} alt="Poster" className="w-full h-full object-cover opacity-40 hover:opacity-100 transition-opacity duration-500" /></div>))}</div></div>
-          <div className="flex-1 relative h-[200%]"><div className="flex flex-col gap-4 animate-scroll-up w-full absolute top-0">{[...scrollList].reverse().map((src, i) => (<div key={`c2-${i}`} className="w-full aspect-[2/3] rounded-md overflow-hidden relative border border-white/5"><img src={src} alt="Poster" className="w-full h-full object-cover opacity-40 hover:opacity-100 transition-opacity duration-500" /></div>))}</div></div>
-          <div className="flex-1 relative h-[200%]"><div className="flex flex-col gap-4 animate-scroll-down w-full absolute top-0">{scrollList.map((src, i) => (<div key={`c3-${i}`} className="w-full aspect-[2/3] rounded-md overflow-hidden relative border border-white/5"><img src={src} alt="Poster" className="w-full h-full object-cover opacity-40 hover:opacity-100 transition-opacity duration-500" /></div>))}</div></div>
-          <div className="flex-1 relative h-[200%]"><div className="flex flex-col gap-4 animate-scroll-up w-full absolute top-0">{[...scrollList].reverse().map((src, i) => (<div key={`c4-${i}`} className="w-full aspect-[2/3] rounded-md overflow-hidden relative border border-white/5"><img src={src} alt="Poster" className="w-full h-full object-cover opacity-40 hover:opacity-100 transition-opacity duration-500" /></div>))}</div></div>
+          <div className="flex-1 relative h-[200%]"><div className="flex flex-col gap-4 animate-scroll-down w-full absolute top-0">{scrollList.map((src: string, i: number) => (<div key={`c1-${i}`} className="w-full aspect-[2/3] rounded-md overflow-hidden relative border border-white/5"><img src={src} alt="Poster" className="w-full h-full object-cover opacity-40 hover:opacity-100 transition-opacity duration-500" /></div>))}</div></div>
+          <div className="flex-1 relative h-[200%]"><div className="flex flex-col gap-4 animate-scroll-up w-full absolute top-0">{[...scrollList].reverse().map((src: string, i: number) => (<div key={`c2-${i}`} className="w-full aspect-[2/3] rounded-md overflow-hidden relative border border-white/5"><img src={src} alt="Poster" className="w-full h-full object-cover opacity-40 hover:opacity-100 transition-opacity duration-500" /></div>))}</div></div>
+          <div className="flex-1 relative h-[200%]"><div className="flex flex-col gap-4 animate-scroll-down w-full absolute top-0">{scrollList.map((src: string, i: number) => (<div key={`c3-${i}`} className="w-full aspect-[2/3] rounded-md overflow-hidden relative border border-white/5"><img src={src} alt="Poster" className="w-full h-full object-cover opacity-40 hover:opacity-100 transition-opacity duration-500" /></div>))}</div></div>
+          <div className="flex-1 relative h-[200%]"><div className="flex flex-col gap-4 animate-scroll-up w-full absolute top-0">{[...scrollList].reverse().map((src: string, i: number) => (<div key={`c4-${i}`} className="w-full aspect-[2/3] rounded-md overflow-hidden relative border border-white/5"><img src={src} alt="Poster" className="w-full h-full object-cover opacity-40 hover:opacity-100 transition-opacity duration-500" /></div>))}</div></div>
         </div>
 
         <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-[#050505] via-[#050505]/90 to-transparent z-10 pointer-events-none flex items-end p-10">
@@ -147,7 +150,7 @@ export default function Login() {
                 <input 
                   type="email" 
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e: any) => setEmail(e.target.value)}
                   placeholder="credential@tservice.in" 
                   className="w-full bg-[#0a0a0a] border border-white/10 rounded py-3 pl-11 pr-4 text-white text-sm outline-none focus:border-red-600 focus:bg-black transition-all placeholder:text-zinc-700 shadow-inner" 
                 />
@@ -161,7 +164,7 @@ export default function Login() {
                 <input 
                   type="password" 
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e: any) => setPassword(e.target.value)}
                   placeholder="••••••••" 
                   className="w-full bg-[#0a0a0a] border border-white/10 rounded py-3 pl-11 pr-4 text-white text-sm outline-none focus:border-red-600 focus:bg-black transition-all placeholder:text-zinc-700 shadow-inner" 
                 />
