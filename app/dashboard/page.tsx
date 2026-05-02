@@ -38,7 +38,7 @@ export default function Dashboard() {
     return result;
   };
 
-  const isNewFilm = (dateString) => {
+const isNewFilm = (dateString: string) => {
     if (!dateString) return false;
     const diffDays = Math.ceil(Math.abs(new Date() - new Date(dateString)) / (1000 * 60 * 60 * 24)); 
     return diffDays <= 7;
