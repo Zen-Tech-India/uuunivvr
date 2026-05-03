@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { 
   Play, Search, MonitorPlay, ChevronRight, 
   LogOut, User, CheckCircle, X, Eye, MessageSquare, 
-  Film, Users, ShieldCheck, TrendingUp, Star, Edit3, Lock, Check
+  Film, Users, ShieldCheck, TrendingUp, Star, Edit3, Lock, Check, UploadCloud
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { createClient } from "../../utils/supabase/client"; 
@@ -32,9 +32,13 @@ export default function Dashboard() {
   const [watchHistory, setWatchHistory] = useState<any[]>([]); 
 
   // --- NEW STATES FOR PRODUCTION HOUSES ---
-  const [publicStudioView, setPublicStudioView] = useState<any>(null); // Controls the full-screen studio popup
+  const [publicStudioView, setPublicStudioView] = useState<any>(null); 
   const [studioEditForm, setStudioEditForm] = useState({ name: "", avatar: "" });
   const [newKeyPerson, setNewKeyPerson] = useState({ name: "", role: "" });
+  
+  // File Upload States
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const [formData, setFormData] = useState({ name: "", email: "", phone: "", avatar: "", gender: "" });
 
@@ -61,7 +65,6 @@ export default function Dashboard() {
   // --- CORE LOGIC & AUTH ---
   useEffect(() => {
     let isMounted = true;
-    // Explicitly typed as 'any' to bypass strict null checks
     let realtimeSubscription: any = null;
 
     const safetyTimeout = setTimeout(() => {
@@ -71,7 +74,6 @@ export default function Dashboard() {
       }
     }, 8000);
 
-    // Typed userEmail
     const setupRealtimeListener = (userEmail: string) => {
       if (realtimeSubscription) supabase.removeChannel(realtimeSubscription);
       realtimeSubscription = supabase.channel(`user_status_${userEmail}`)
@@ -91,7 +93,6 @@ export default function Dashboard() {
       if (usersData && isMounted) setAllUsers(usersData);
     };
 
-    // Typed session
     const processUser = async (session: any) => {
       try {
         if (!session?.user?.email) throw new Error("No user email found.");
@@ -124,7 +125,6 @@ export default function Dashboard() {
           if (window.location.href.includes("code=") || window.location.href.includes("access_token=")) window.history.replaceState({}, document.title, window.location.pathname);
         }
       } catch (err: any) {
-        // Typed err as any to prevent err.message failure
         if (isMounted) { clearTimeout(safetyTimeout); setIsLoading(false); Swal.fire({ icon: 'error', title: 'Sync Failed', text: err.message, background: '#030303', color: '#ffffff' }); }
       }
     };
@@ -139,7 +139,6 @@ export default function Dashboard() {
       if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) processUser(session);
     });
 
-    // Typed e
     const handleKeyDown = (e: any) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); setShowSearch(true); }
       if (e.key === 'Escape') { setShowSearch(false); setPublicStudioView(null); }
@@ -149,7 +148,6 @@ export default function Dashboard() {
     return () => { isMounted = false; clearTimeout(safetyTimeout); subscription.unsubscribe(); window.removeEventListener('keydown', handleKeyDown); if (realtimeSubscription) supabase.removeChannel(realtimeSubscription); };
   }, []); 
 
-  // Typed e
   const handleCompleteIntro = async (e: any) => {
     e.preventDefault();
     if (!formData.name || !formData.email || !formData.phone || !formData.gender) return Swal.fire({ icon: 'error', title: 'Error', text: 'Fill all fields.', background: '#030303', color: '#ffffff' });
@@ -161,7 +159,6 @@ export default function Dashboard() {
         is_subscribed: isStaff, is_staff: isStaff, profile_id: generateProfileId(), account_tier: isStaff ? 'staff' : 'viewer', is_verified: isStaff
     }]);
 
-    // Typed error as any
     if (error) { (error as any).code === '23505' ? window.location.reload() : Swal.fire({ icon: 'error', title: 'DB Error', text: error.message, background: '#030303', color: '#ffffff' }); } 
     else { Swal.close(); !isStaff ? window.location.href = '/subscription' : window.location.reload(); }
   };
@@ -172,33 +169,57 @@ export default function Dashboard() {
     });
   };
 
-  // --- PRODUCTION HOUSE ACTIONS ---
-  const handleLockProfile = async () => {
-    if (!studioEditForm.name || !studioEditForm.avatar) return;
+  // --- FAST UPDATE & UPLOAD STUDIO IDENTITY ---
+  const handleSaveStudioIdentity = async () => {
+    if (!studioEditForm.name) return Swal.fire({ icon: 'error', title: 'Name Required', background: '#030303', color: '#ffffff' });
     
-    Swal.fire({
-      title: 'Are you absolutely sure?',
-      text: "You can only update your Studio Name and Logo ONCE. This action is permanent.",
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#dc2626',
-      cancelButtonColor: '#262626',
-      confirmButtonText: 'Yes, lock it in!',
-      background: '#030303', color: '#ffffff'
-    }).then(async (result) => {
-      if (result.isConfirmed) {
-        const { error } = await supabase.from('zen_tech_users').update({
-          full_name: studioEditForm.name,
-          avatar_url: studioEditForm.avatar,
-          profile_locked: true 
-        }).eq('email', currentUser.email);
+    setIsUploading(true);
+    Swal.fire({ title: 'Syncing to Mainframe...', background: '#030303', color: '#ffffff', allowOutsideClick: false, didOpen: () => { Swal.showLoading() }});
 
-        if (!error) {
-          setCurrentUser({...currentUser, name: studioEditForm.name, avatar: studioEditForm.avatar, profile_locked: true});
-          Swal.fire({ title: 'Locked!', text: 'Your studio identity is now permanent.', icon: 'success', background: '#030303', color: '#ffffff' });
-        }
+    let finalAvatarUrl = studioEditForm.avatar;
+
+    // Handle File Upload to Supabase Storage if a new file is selected
+    if (avatarFile) {
+      const fileExt = avatarFile.name.split('.').pop();
+      const fileName = `${currentUser.profile_id}-${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`; 
+
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, avatarFile);
+      
+      if (uploadError) {
+        setIsUploading(false);
+        return Swal.fire({ icon: 'error', title: 'Upload Failed', text: uploadError.message, background: '#030303', color: '#ffffff' });
       }
-    });
+
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath);
+      finalAvatarUrl = publicUrl;
+    }
+
+    // Fast Update the zen_tech_users table
+    const { error } = await supabase.from('zen_tech_users').update({
+      full_name: studioEditForm.name,
+      avatar_url: finalAvatarUrl
+    }).eq('email', currentUser.email);
+
+    if (!error) {
+      // INSTANT UI REFLECTION
+      setCurrentUser({...currentUser, name: studioEditForm.name, avatar: finalAvatarUrl});
+      setStudioEditForm({...studioEditForm, avatar: finalAvatarUrl});
+      
+      // Update allUsers array so Search Bar picks up the new name instantly
+      setAllUsers(prevUsers => prevUsers.map(u => 
+        u.profile_id === currentUser.profile_id 
+          ? { ...u, full_name: studioEditForm.name, avatar_url: finalAvatarUrl } 
+          : u
+      ));
+      
+      setAvatarFile(null); // Reset file input
+      Swal.fire({ title: 'Identity Updated!', icon: 'success', background: '#030303', color: '#ffffff', timer: 1500, showConfirmButton: false });
+    } else {
+      Swal.fire({ icon: 'error', title: 'Database Error', text: error.message, background: '#030303', color: '#ffffff' });
+    }
+    
+    setIsUploading(false);
   };
 
   const handleAddKeyPerson = async () => {
@@ -261,7 +282,7 @@ export default function Dashboard() {
           <div className="w-full max-w-2xl flex flex-col h-max max-h-[70vh]">
             <div className="flex items-center px-4 py-4 border-b border-white/[0.05]">
               <Search className="text-neutral-500 mr-4" size={16} />
-              <input autoFocus type="text" placeholder="SEARCH TITLE, STUDIO, OR CREATOR..." className="bg-transparent flex-1 outline-none text-[11px] font-black tracking-[0.2em] uppercase text-white placeholder:text-neutral-700" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+              <input autoFocus type="text" placeholder="SEARCH TITLE, STUDIO NAME, OR STUDIO ID..." className="bg-transparent flex-1 outline-none text-[11px] font-black tracking-[0.2em] uppercase text-white placeholder:text-neutral-700" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
               <button onClick={() => setShowSearch(false)} className="text-[9px] px-2 py-1 text-neutral-500 hover:text-white font-bold tracking-widest uppercase transition-colors">Close</button>
             </div>
             <div className="py-6 overflow-y-auto custom-scrollbar">
@@ -270,17 +291,25 @@ export default function Dashboard() {
               ) : (
                 <div className="space-y-8">
                   
-                  {/* PRODUCTION HOUSES MATCHES */}
-                  {allUsers.filter(u => u.account_tier === 'production' && u.full_name.toLowerCase().includes(searchQuery.toLowerCase())).length > 0 && (
+                  {/* PRODUCTION HOUSES MATCHES (Searches Full Name AND Profile ID) */}
+                  {allUsers.filter(u => 
+                    u.account_tier === 'production' && 
+                    (u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                     u.profile_id?.toLowerCase().includes(searchQuery.toLowerCase()))
+                  ).length > 0 && (
                     <div>
                       <p className="text-[8px] text-red-600 font-black tracking-[0.2em] uppercase mb-4 px-4">Studios & Production Houses</p>
                       <div className="flex flex-col">
-                        {allUsers.filter(u => u.account_tier === 'production' && u.full_name.toLowerCase().includes(searchQuery.toLowerCase())).map((user: any) => (
+                        {allUsers.filter(u => 
+                          u.account_tier === 'production' && 
+                          (u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                           u.profile_id?.toLowerCase().includes(searchQuery.toLowerCase()))
+                        ).map((user: any) => (
                           <div key={user.profile_id} onClick={() => { setPublicStudioView(user); setShowSearch(false); }} className="flex items-center gap-4 px-4 py-2 hover:bg-white/[0.02] cursor-pointer transition-colors group">
                             <div className="w-10 h-10 rounded-full bg-neutral-900 border border-white/5 overflow-hidden"><img src={user.avatar_url} className="w-full h-full object-cover opacity-80 group-hover:opacity-100" /></div>
                             <div>
                               <h4 className="text-[10px] font-bold uppercase tracking-widest text-white flex items-center gap-2">{user.full_name} <CheckCircle size={10} className="text-blue-500" /></h4>
-                              <p className="text-[8px] text-neutral-500 font-bold uppercase tracking-[0.1em] mt-1">Verified Studio</p>
+                              <p className="text-[8px] text-neutral-500 font-bold uppercase tracking-[0.1em] mt-1">ID: {user.profile_id}</p>
                             </div>
                           </div>
                         ))}
@@ -476,24 +505,37 @@ export default function Dashboard() {
                 {activeTab === 'studio_settings' && (
                   <div className="flex flex-col gap-10 max-w-2xl">
                     
-                    {/* SECTION: PERMANENT BRANDING */}
+                    {/* SECTION: BRANDING & IDENTITY */}
                     <div>
-                      <h3 className="text-[12px] font-black tracking-[0.2em] uppercase text-white mb-2 flex items-center gap-2">Studio Identity <Lock size={12} className="text-red-500"/></h3>
-                      <p className="text-[9px] font-bold tracking-widest text-neutral-500 mb-6 uppercase">Warning: Name and Logo can only be updated once.</p>
+                      <h3 className="text-[12px] font-black tracking-[0.2em] uppercase text-white mb-2 flex items-center gap-2">Studio Identity <Lock size={12} className="text-neutral-500"/></h3>
+                      <p className="text-[9px] font-bold tracking-widest text-neutral-500 mb-6 uppercase">Update your global production identity.</p>
                       
                       <div className="bg-white/[0.01] border border-white/[0.02] p-6 rounded-xl flex flex-col gap-4">
                         <label className="text-[9px] font-black uppercase tracking-widest text-neutral-400">Studio Name</label>
                         <input type="text" value={studioEditForm.name} onChange={(e) => setStudioEditForm({...studioEditForm, name: e.target.value})} disabled={currentUser.profile_locked} className="bg-black border border-white/10 rounded p-3 text-[10px] font-bold text-white outline-none disabled:opacity-50" />
                         
-                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-400 mt-2">Avatar / Logo URL</label>
-                        <input type="text" value={studioEditForm.avatar} onChange={(e) => setStudioEditForm({...studioEditForm, avatar: e.target.value})} disabled={currentUser.profile_locked} className="bg-black border border-white/10 rounded p-3 text-[10px] font-bold text-white outline-none disabled:opacity-50" />
+                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-400 mt-2">Upload Studio Logo</label>
+                        <div className="flex items-center gap-4">
+                          <div className="w-16 h-16 rounded-full bg-black border border-white/10 overflow-hidden flex-shrink-0">
+                             <img src={avatarFile ? URL.createObjectURL(avatarFile) : (studioEditForm.avatar || "/default-avatar.png")} className="w-full h-full object-cover" />
+                          </div>
+                          <input 
+                            type="file" 
+                            accept="image/*"
+                            disabled={currentUser.profile_locked || isUploading} 
+                            onChange={(e) => setAvatarFile(e?.target?.files?.[0] || null)}
+                            className="bg-black border border-white/10 rounded p-2 text-[10px] font-bold text-white outline-none disabled:opacity-50 w-full file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-[9px] file:font-black file:uppercase file:bg-white/10 file:text-white hover:file:bg-white/20 transition-all cursor-pointer" 
+                          />
+                        </div>
 
                         {currentUser.profile_locked ? (
                           <div className="mt-4 p-3 bg-green-900/10 border border-green-900/30 rounded flex items-center gap-2 text-green-500">
                              <Check size={14} /> <span className="text-[9px] font-black uppercase tracking-widest">Profile Permanently Locked</span>
                           </div>
                         ) : (
-                          <button onClick={handleLockProfile} className="mt-4 bg-red-600 hover:bg-red-700 text-white font-black text-[9px] uppercase tracking-widest py-3 rounded transition-colors flex items-center justify-center gap-2">Save Permanently <Lock size={10}/></button>
+                          <button onClick={handleSaveStudioIdentity} disabled={isUploading} className="mt-4 bg-red-600 hover:bg-red-700 text-white font-black text-[9px] uppercase tracking-widest py-3 rounded transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
+                            {isUploading ? "Syncing..." : "Save Studio Identity"} <UploadCloud size={12}/>
+                          </button>
                         )}
                       </div>
                     </div>
@@ -591,7 +633,6 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
               {films.map((film: any) => (
                 <div key={film.id} onClick={() => window.location.href=`/film/${film.slug}`} className="group cursor-pointer">
-                  {/* CHANGED: aspect-video (16:9 YouTube Thumbnail ratio) instead of portrait */}
                   <div className="relative aspect-video rounded-md overflow-hidden bg-[#030303] border border-white/[0.02] group-hover:border-white/10 transition-colors shadow-lg">
                     <img src={film.poster_url} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" alt={film.title} />
                     <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent opacity-90"></div>
