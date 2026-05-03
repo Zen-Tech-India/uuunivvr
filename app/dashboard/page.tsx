@@ -1,11 +1,10 @@
 "use client";
 
-
 import React, { useState, useEffect } from "react";
 import { 
   Play, Search, MonitorPlay, ChevronRight, 
   LogOut, User, CheckCircle, X, Eye, MessageSquare, 
-  Film, Users, ShieldCheck, TrendingUp, Star
+  Film, Users, ShieldCheck, TrendingUp, Star, Edit3, Lock, Check
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { createClient } from "../../utils/supabase/client"; 
@@ -31,6 +30,11 @@ export default function Dashboard() {
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [films, setFilms] = useState<any[]>([]);
   const [watchHistory, setWatchHistory] = useState<any[]>([]); 
+
+  // --- NEW STATES FOR PRODUCTION HOUSES ---
+  const [publicStudioView, setPublicStudioView] = useState<any>(null); // Controls the full-screen studio popup
+  const [studioEditForm, setStudioEditForm] = useState({ name: "", avatar: "" });
+  const [newKeyPerson, setNewKeyPerson] = useState({ name: "", role: "" });
 
   const [formData, setFormData] = useState({ name: "", email: "", phone: "", avatar: "", gender: "" });
 
@@ -83,7 +87,7 @@ export default function Dashboard() {
         setWatchHistory(filmsData.slice(0, 2)); 
       }
       
-      const { data: usersData } = await supabase.from("zen_tech_users").select("profile_id, full_name, avatar_url, account_tier");
+      const { data: usersData } = await supabase.from("zen_tech_users").select("profile_id, full_name, avatar_url, account_tier, key_people");
       if (usersData && isMounted) setAllUsers(usersData);
     };
 
@@ -108,9 +112,12 @@ export default function Dashboard() {
           if (data) {
             if (!data.is_subscribed && !data.is_staff && !isStaff) { window.location.href = '/subscription'; return; }
             setCurrentUser({
+              ...data,
               name: data.full_name || googleName, email: data.email, phone: data.phone_number, avatar: data.avatar_url || googleAvatar, gender: data.gender,
-              profile_id: data.profile_id, account_tier: data.account_tier || 'viewer', is_verified: data.is_verified || isStaff, is_staff: data.is_staff || isStaff
+              profile_id: data.profile_id, account_tier: data.account_tier || 'viewer', is_verified: data.is_verified || isStaff, is_staff: data.is_staff || isStaff,
+              key_people: data.key_people || []
             });
+            setStudioEditForm({ name: data.full_name || googleName, avatar: data.avatar_url || googleAvatar });
             setShowIntro(false); setupRealtimeListener(email); fetchDashboardData();
           } else { setShowIntro(true); }
           clearTimeout(safetyTimeout); setIsLoading(false); 
@@ -135,7 +142,7 @@ export default function Dashboard() {
     // Typed e
     const handleKeyDown = (e: any) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); setShowSearch(true); }
-      if (e.key === 'Escape') setShowSearch(false);
+      if (e.key === 'Escape') { setShowSearch(false); setPublicStudioView(null); }
     };
     window.addEventListener('keydown', handleKeyDown);
 
@@ -163,6 +170,46 @@ export default function Dashboard() {
     Swal.fire({ title: 'Logging out', icon: 'info', background: '#030303', color: '#ffffff', showConfirmButton: false, timer: 1500 }).then(async () => {
       await supabase.auth.signOut(); window.location.href = '/';
     });
+  };
+
+  // --- PRODUCTION HOUSE ACTIONS ---
+  const handleLockProfile = async () => {
+    if (!studioEditForm.name || !studioEditForm.avatar) return;
+    
+    Swal.fire({
+      title: 'Are you absolutely sure?',
+      text: "You can only update your Studio Name and Logo ONCE. This action is permanent.",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
+      cancelButtonColor: '#262626',
+      confirmButtonText: 'Yes, lock it in!',
+      background: '#030303', color: '#ffffff'
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        const { error } = await supabase.from('zen_tech_users').update({
+          full_name: studioEditForm.name,
+          avatar_url: studioEditForm.avatar,
+          profile_locked: true 
+        }).eq('email', currentUser.email);
+
+        if (!error) {
+          setCurrentUser({...currentUser, name: studioEditForm.name, avatar: studioEditForm.avatar, profile_locked: true});
+          Swal.fire({ title: 'Locked!', text: 'Your studio identity is now permanent.', icon: 'success', background: '#030303', color: '#ffffff' });
+        }
+      }
+    });
+  };
+
+  const handleAddKeyPerson = async () => {
+    if (!newKeyPerson.name || !newKeyPerson.role) return;
+    const updatedPeople = [...(currentUser.key_people || []), newKeyPerson];
+    
+    const { error } = await supabase.from('zen_tech_users').update({ key_people: updatedPeople }).eq('email', currentUser.email);
+    if (!error) {
+      setCurrentUser({...currentUser, key_people: updatedPeople});
+      setNewKeyPerson({ name: "", role: "" });
+    }
   };
 
   if (isLoading) return <main className="min-h-screen bg-[#000] flex flex-col items-center justify-center"><div className="w-8 h-8 border-t-2 border-red-600 rounded-full animate-spin mb-4"></div><p className="text-neutral-500 text-[9px] uppercase tracking-[0.3em]">Connecting</p></main>;
@@ -214,7 +261,7 @@ export default function Dashboard() {
           <div className="w-full max-w-2xl flex flex-col h-max max-h-[70vh]">
             <div className="flex items-center px-4 py-4 border-b border-white/[0.05]">
               <Search className="text-neutral-500 mr-4" size={16} />
-              <input autoFocus type="text" placeholder="SEARCH TITLE, ACTOR, CREATOR, OR STUDIO..." className="bg-transparent flex-1 outline-none text-[11px] font-black tracking-[0.2em] uppercase text-white placeholder:text-neutral-700" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+              <input autoFocus type="text" placeholder="SEARCH TITLE, STUDIO, OR CREATOR..." className="bg-transparent flex-1 outline-none text-[11px] font-black tracking-[0.2em] uppercase text-white placeholder:text-neutral-700" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
               <button onClick={() => setShowSearch(false)} className="text-[9px] px-2 py-1 text-neutral-500 hover:text-white font-bold tracking-widest uppercase transition-colors">Close</button>
             </div>
             <div className="py-6 overflow-y-auto custom-scrollbar">
@@ -222,7 +269,26 @@ export default function Dashboard() {
                 <div className="py-10 text-center text-[9px] font-black tracking-[0.2em] uppercase text-neutral-700">Awaiting Input...</div>
               ) : (
                 <div className="space-y-8">
-                  {/* DYNAMIC FILM MATCHES */}
+                  
+                  {/* PRODUCTION HOUSES MATCHES */}
+                  {allUsers.filter(u => u.account_tier === 'production' && u.full_name.toLowerCase().includes(searchQuery.toLowerCase())).length > 0 && (
+                    <div>
+                      <p className="text-[8px] text-red-600 font-black tracking-[0.2em] uppercase mb-4 px-4">Studios & Production Houses</p>
+                      <div className="flex flex-col">
+                        {allUsers.filter(u => u.account_tier === 'production' && u.full_name.toLowerCase().includes(searchQuery.toLowerCase())).map((user: any) => (
+                          <div key={user.profile_id} onClick={() => { setPublicStudioView(user); setShowSearch(false); }} className="flex items-center gap-4 px-4 py-2 hover:bg-white/[0.02] cursor-pointer transition-colors group">
+                            <div className="w-10 h-10 rounded-full bg-neutral-900 border border-white/5 overflow-hidden"><img src={user.avatar_url} className="w-full h-full object-cover opacity-80 group-hover:opacity-100" /></div>
+                            <div>
+                              <h4 className="text-[10px] font-bold uppercase tracking-widest text-white flex items-center gap-2">{user.full_name} <CheckCircle size={10} className="text-blue-500" /></h4>
+                              <p className="text-[8px] text-neutral-500 font-bold uppercase tracking-[0.1em] mt-1">Verified Studio</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* FILM MATCHES */}
                   {films.filter(f => matchesSearch(f, searchQuery)).length > 0 && (
                     <div>
                       <p className="text-[8px] text-neutral-600 font-black tracking-[0.2em] uppercase mb-4 px-4">Film Assets</p>
@@ -232,23 +298,7 @@ export default function Dashboard() {
                             <div className="w-16 h-9 bg-neutral-900 rounded-sm overflow-hidden flex-shrink-0"><img src={film.poster_url} className="w-full h-full object-cover opacity-70" /></div>
                             <div>
                               <h4 className="text-[10px] font-bold uppercase tracking-widest text-neutral-200">{film.title}</h4>
-                              <p className="text-[8px] text-neutral-600 font-bold uppercase tracking-[0.1em] mt-1">{film.genre || "Film"} • {film.production_house_name || "Indie"}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {currentUser?.is_staff && allUsers.filter(u => u.full_name.toLowerCase().includes(searchQuery.toLowerCase())).length > 0 && (
-                    <div>
-                      <p className="text-[8px] text-red-900 font-black tracking-[0.2em] uppercase mb-4 px-4">Secure Directory</p>
-                      <div className="flex flex-col">
-                        {allUsers.filter(u => u.full_name.toLowerCase().includes(searchQuery.toLowerCase())).map((user: any) => (
-                          <div key={user.profile_id} className="flex items-center gap-4 px-4 py-2 hover:bg-white/[0.02] cursor-pointer transition-colors">
-                            <div className="w-6 h-6 rounded-full bg-neutral-900 overflow-hidden"><img src={user.avatar_url} className="w-full h-full object-cover opacity-50" /></div>
-                            <div>
-                              <h4 className="text-[10px] font-bold uppercase tracking-widest text-neutral-300">{user.full_name}</h4>
-                              <p className="text-[8px] text-neutral-600 font-bold uppercase tracking-[0.1em] mt-1">{user.profile_id}</p>
+                              <p className="text-[8px] text-neutral-600 font-bold uppercase tracking-[0.1em] mt-1">{film.genre || "Cinematic"} • {film.production_house_name || "Indie"}</p>
                             </div>
                           </div>
                         ))}
@@ -257,6 +307,67 @@ export default function Dashboard() {
                   )}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- PUBLIC STUDIO PROFILE POPUP --- */}
+      {publicStudioView && (
+        <div className="fixed inset-0 z-[400] bg-[#000]/95 backdrop-blur-3xl flex items-center justify-center p-6 animate-in fade-in duration-500">
+          <div className="w-full max-w-4xl h-[80vh] bg-[#030303] border border-white/[0.05] rounded-2xl flex flex-col relative overflow-hidden shadow-2xl shadow-red-900/10">
+            <button onClick={() => setPublicStudioView(null)} className="absolute top-6 right-6 z-50 bg-black/50 p-2 rounded-full text-white hover:bg-white/10 transition-colors"><X size={16} /></button>
+            
+            {/* Studio Header Cover */}
+            <div className="h-48 w-full relative bg-neutral-900 border-b border-white/[0.02]">
+               <div className="absolute inset-0 bg-gradient-to-t from-[#030303] to-transparent z-10"></div>
+               <img src={publicStudioView.avatar_url} className="w-full h-full object-cover opacity-20 blur-xl" />
+               
+               <div className="absolute bottom-[-30px] left-12 z-20 flex items-end gap-6">
+                 <div className="w-24 h-24 rounded-xl border-2 border-[#030303] bg-black overflow-hidden shadow-xl">
+                   <img src={publicStudioView.avatar_url} className="w-full h-full object-cover" />
+                 </div>
+                 <div className="mb-2">
+                   <h1 className="text-3xl font-black uppercase tracking-widest text-white flex items-center gap-3">
+                     {publicStudioView.full_name} <CheckCircle size={18} className="text-blue-500" />
+                   </h1>
+                   <p className="text-[9px] text-red-500 font-black tracking-[0.3em] uppercase mt-1">Official Production House</p>
+                 </div>
+               </div>
+            </div>
+
+            <div className="flex-1 p-12 pt-16 flex gap-12 overflow-y-auto custom-scrollbar">
+              <div className="w-1/3">
+                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500 mb-6 border-b border-white/5 pb-2">Key Executives</h3>
+                {publicStudioView.key_people && publicStudioView.key_people.length > 0 ? (
+                  <div className="space-y-4">
+                    {publicStudioView.key_people.slice(0, 3).map((person: any, idx: number) => (
+                      <div key={idx} className="flex flex-col bg-white/[0.02] p-3 rounded border border-white/5">
+                        <span className="text-[11px] font-bold tracking-widest text-white uppercase">{person.name}</span>
+                        <span className="text-[8px] font-black tracking-[0.2em] text-red-500 uppercase mt-1">{person.role}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[9px] text-neutral-700 font-bold uppercase tracking-widest">Classified.</p>
+                )}
+              </div>
+
+              <div className="w-2/3">
+                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500 mb-6 border-b border-white/5 pb-2">Cinematic Universe</h3>
+                <div className="grid grid-cols-2 gap-4">
+                   {films.filter(f => f.production_house_name === publicStudioView.full_name).map(film => (
+                      <div key={film.id} onClick={() => window.location.href=`/film/${film.slug}`} className="cursor-pointer group relative rounded border border-white/[0.05] overflow-hidden bg-black aspect-video">
+                        <img src={film.poster_url} className="w-full h-full object-cover opacity-50 group-hover:opacity-100 transition-opacity" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
+                        <h4 className="absolute bottom-2 left-2 text-[9px] font-bold uppercase tracking-widest text-white">{film.title}</h4>
+                      </div>
+                   ))}
+                   {films.filter(f => f.production_house_name === publicStudioView.full_name).length === 0 && (
+                     <p className="text-[9px] text-neutral-700 font-bold uppercase tracking-widest">No assets found for this studio.</p>
+                   )}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -292,22 +403,28 @@ export default function Dashboard() {
             <div className="h-[70%] flex bg-[#000]">
               {/* Sidebar */}
               <div className="w-64 border-r border-white/[0.02] p-8 flex flex-col gap-6">
-                <button onClick={() => setActiveTab('activity')} className={`text-[9px] font-black uppercase tracking-[0.2em] text-left transition-colors ${activeTab === 'activity' ? 'text-white' : 'text-neutral-600 hover:text-neutral-400'}`}>Overview</button>
-                {(currentUser.account_tier === 'production' || currentUser.account_tier === 'staff') && (
-                  <button onClick={() => setActiveTab('studio')} className={`text-[9px] font-black uppercase tracking-[0.2em] text-left transition-colors ${activeTab === 'studio' ? 'text-red-500' : 'text-neutral-600 hover:text-neutral-400'}`}>Studio Portal</button>
+                <button onClick={() => setActiveTab('activity')} className={`text-[9px] font-black uppercase tracking-[0.2em] text-left transition-colors ${activeTab === 'activity' ? 'text-white' : 'text-neutral-600 hover:text-neutral-400'}`}>History & Activity</button>
+                
+                {currentUser.account_tier === 'production' && (
+                  <>
+                    <button onClick={() => setActiveTab('studio_films')} className={`text-[9px] font-black uppercase tracking-[0.2em] text-left transition-colors ${activeTab === 'studio_films' ? 'text-red-500' : 'text-neutral-600 hover:text-neutral-400'}`}>Your Films</button>
+                    <button onClick={() => setActiveTab('studio_settings')} className={`text-[9px] font-black uppercase tracking-[0.2em] text-left transition-colors ${activeTab === 'studio_settings' ? 'text-red-500' : 'text-neutral-600 hover:text-neutral-400'}`}>Studio Settings</button>
+                  </>
                 )}
-                <button className="text-[9px] font-black uppercase tracking-[0.2em] text-left text-neutral-600 hover:text-neutral-400 transition-colors mt-auto">Settings</button>
+
+                {(currentUser.account_tier === 'production' || currentUser.account_tier === 'staff') && (
+                  <button onClick={() => window.location.href='/upload'} className={`text-[9px] font-black uppercase tracking-[0.2em] text-left transition-colors flex items-center gap-2 text-neutral-600 hover:text-white mt-4`}>Upload Master <ShieldCheck size={10}/></button>
+                )}
               </div>
               
               {/* Content */}
               <div className="flex-1 p-12 overflow-y-auto custom-scrollbar">
-                {activeTab === 'activity' ? (
+                
+                {/* 1. HISTORY TAB */}
+                {activeTab === 'activity' && (
                   <div className="grid grid-cols-2 gap-4">
-                    
-                    {/* DYNAMIC WATCH HISTORY UI */}
                     <div className="col-span-2 bg-white/[0.01] border border-white/[0.02] rounded-xl p-8 flex flex-col">
-                      <span className="text-[9px] font-black tracking-[0.2em] uppercase text-neutral-500 flex items-center gap-2 mb-6"><Eye size={12}/> Watch History</span>
-                      
+                      <span className="text-[9px] font-black tracking-[0.2em] uppercase text-neutral-500 flex items-center gap-2 mb-6"><Eye size={12}/> Live Watch History</span>
                       {watchHistory.length > 0 ? (
                         <div className="flex gap-4 overflow-x-auto custom-scrollbar pb-4">
                           {watchHistory.map((histFilm: any) => (
@@ -315,7 +432,7 @@ export default function Dashboard() {
                                <div className="w-full aspect-video rounded border border-white/[0.03] overflow-hidden mb-3 relative bg-[#030303]">
                                  <img src={histFilm.poster_url} className="w-full h-full object-cover opacity-50 group-hover:opacity-100 transition-opacity" />
                                  <div className="absolute inset-0 bg-black/40 group-hover:bg-transparent transition-colors"></div>
-                                 <div className="absolute bottom-0 left-0 h-1 bg-red-600" style={{ width: `${Math.floor(Math.random() * 60) + 20}%` }}></div> {/* Mock Progress Bar */}
+                                 <div className="absolute bottom-0 left-0 h-1 bg-red-600" style={{ width: `${Math.floor(Math.random() * 60) + 20}%` }}></div>
                                </div>
                                <h4 className="text-[10px] font-bold uppercase tracking-widest text-neutral-300 truncate">{histFilm.title}</h4>
                              </div>
@@ -325,19 +442,83 @@ export default function Dashboard() {
                         <span className="text-neutral-800 text-[10px] uppercase font-bold tracking-widest">No logs found.</span>
                       )}
                     </div>
-                    
-                    {/* Additional Metrics */}
-                    <div className="bg-white/[0.01] border border-white/[0.02] rounded-xl p-6 h-32 flex flex-col justify-between mt-4">
-                      <span className="text-[9px] font-black tracking-[0.2em] uppercase text-neutral-600">Community Interactions</span>
-                      <span className="text-white text-xl font-black">0</span>
+                  </div>
+                )}
+
+                {/* 2. YOUR FILMS TAB (Production Only) */}
+                {activeTab === 'studio_films' && (
+                  <div>
+                    <div className="flex items-center justify-between mb-8">
+                       <span className="text-[12px] font-black tracking-[0.2em] uppercase text-white flex items-center gap-2"><Film size={14} className="text-red-500"/> Published Universe</span>
+                       <button onClick={() => window.location.href='/upload'} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-[9px] font-black uppercase tracking-widest transition-colors">Publish New</button>
+                    </div>
+                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
+                      {films.filter(f => f.production_house_name === currentUser.name).map((film) => (
+                         <div key={film.id} className="group relative rounded border border-white/[0.05] overflow-hidden bg-black p-4 flex flex-col justify-between">
+                            <div className="w-full aspect-video rounded overflow-hidden mb-4 relative">
+                              <img src={film.poster_url} className="w-full h-full object-cover opacity-50" />
+                            </div>
+                            <h4 className="text-[11px] font-bold uppercase tracking-widest text-white mb-4">{film.title}</h4>
+                            <div className="flex gap-2 w-full">
+                              <button onClick={() => window.location.href=`/film/${film.slug}`} className="flex-1 bg-white/5 hover:bg-white/10 text-white py-2 rounded text-[8px] font-black uppercase tracking-widest transition-colors text-center">View</button>
+                              <button onClick={() => window.location.href=`/upload?edit=${film.id}`} className="flex-1 bg-red-900/20 hover:bg-red-900/40 text-red-500 py-2 rounded text-[8px] font-black uppercase tracking-widest transition-colors text-center flex items-center justify-center gap-1"><Edit3 size={10}/> Edit</button>
+                            </div>
+                         </div>
+                      ))}
+                      {films.filter(f => f.production_house_name === currentUser.name).length === 0 && (
+                        <p className="col-span-3 text-[9px] font-black uppercase tracking-[0.3em] text-neutral-600 py-10">No films published yet.</p>
+                      )}
                     </div>
                   </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="col-span-2 bg-gradient-to-br from-red-900/10 to-transparent border border-red-900/20 rounded-xl p-8">
-                      <span className="text-[9px] font-black tracking-[0.2em] uppercase text-red-600/80 flex items-center gap-2 mb-6"><Film size={12}/> Master Assets</span>
-                      <p className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">Mainframe sync complete.</p>
+                )}
+
+                {/* 3. STUDIO SETTINGS TAB (Production Only) */}
+                {activeTab === 'studio_settings' && (
+                  <div className="flex flex-col gap-10 max-w-2xl">
+                    
+                    {/* SECTION: PERMANENT BRANDING */}
+                    <div>
+                      <h3 className="text-[12px] font-black tracking-[0.2em] uppercase text-white mb-2 flex items-center gap-2">Studio Identity <Lock size={12} className="text-red-500"/></h3>
+                      <p className="text-[9px] font-bold tracking-widest text-neutral-500 mb-6 uppercase">Warning: Name and Logo can only be updated once.</p>
+                      
+                      <div className="bg-white/[0.01] border border-white/[0.02] p-6 rounded-xl flex flex-col gap-4">
+                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-400">Studio Name</label>
+                        <input type="text" value={studioEditForm.name} onChange={(e) => setStudioEditForm({...studioEditForm, name: e.target.value})} disabled={currentUser.profile_locked} className="bg-black border border-white/10 rounded p-3 text-[10px] font-bold text-white outline-none disabled:opacity-50" />
+                        
+                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-400 mt-2">Avatar / Logo URL</label>
+                        <input type="text" value={studioEditForm.avatar} onChange={(e) => setStudioEditForm({...studioEditForm, avatar: e.target.value})} disabled={currentUser.profile_locked} className="bg-black border border-white/10 rounded p-3 text-[10px] font-bold text-white outline-none disabled:opacity-50" />
+
+                        {currentUser.profile_locked ? (
+                          <div className="mt-4 p-3 bg-green-900/10 border border-green-900/30 rounded flex items-center gap-2 text-green-500">
+                             <Check size={14} /> <span className="text-[9px] font-black uppercase tracking-widest">Profile Permanently Locked</span>
+                          </div>
+                        ) : (
+                          <button onClick={handleLockProfile} className="mt-4 bg-red-600 hover:bg-red-700 text-white font-black text-[9px] uppercase tracking-widest py-3 rounded transition-colors flex items-center justify-center gap-2">Save Permanently <Lock size={10}/></button>
+                        )}
+                      </div>
                     </div>
+
+                    {/* SECTION: KEY PEOPLE */}
+                    <div>
+                      <h3 className="text-[12px] font-black tracking-[0.2em] uppercase text-white mb-2 flex items-center gap-2">Key Executives <Users size={12} className="text-red-500"/></h3>
+                      <p className="text-[9px] font-bold tracking-widest text-neutral-500 mb-6 uppercase">List Directors, Producers, and Executives.</p>
+                      
+                      <div className="space-y-3 mb-6">
+                        {currentUser.key_people && currentUser.key_people.map((person: any, idx: number) => (
+                           <div key={idx} className="flex justify-between items-center bg-white/[0.02] border border-white/5 p-4 rounded">
+                             <span className="text-[10px] font-bold uppercase tracking-widest text-white">{person.name}</span>
+                             <span className="text-[8px] font-black uppercase tracking-[0.2em] text-red-500">{person.role}</span>
+                           </div>
+                        ))}
+                      </div>
+
+                      <div className="flex gap-2">
+                        <input type="text" placeholder="Name (e.g. John Doe)" value={newKeyPerson.name} onChange={e => setNewKeyPerson({...newKeyPerson, name: e.target.value})} className="flex-1 bg-black border border-white/10 rounded p-3 text-[9px] font-bold tracking-widest text-white outline-none uppercase placeholder:text-neutral-700" />
+                        <input type="text" placeholder="Role (e.g. Director)" value={newKeyPerson.role} onChange={e => setNewKeyPerson({...newKeyPerson, role: e.target.value})} className="flex-1 bg-black border border-white/10 rounded p-3 text-[9px] font-bold tracking-widest text-white outline-none uppercase placeholder:text-neutral-700" />
+                        <button onClick={handleAddKeyPerson} className="bg-white text-black px-6 rounded text-[9px] font-black uppercase tracking-widest hover:bg-neutral-300 transition-colors">Add</button>
+                      </div>
+                    </div>
+
                   </div>
                 )}
               </div>
