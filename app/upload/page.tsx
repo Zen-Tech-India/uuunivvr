@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { 
   UploadCloud, Film, AlertTriangle, ChevronLeft, 
   Play, Plus, X, User, CheckCircle2, ShieldCheck, 
-  Info, ShieldAlert, Edit3, Loader2
+  Info, ShieldAlert, Edit3, Loader2, Image as ImageIcon
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { createClient } from "../../utils/supabase/client";
@@ -24,11 +24,15 @@ export default function UploadStudio() {
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [studioInfo, setStudioInfo] = useState({ name: "", logo: "", isStaff: false });
 
-  // Upload States - Typed with <any> to prevent strict null assignment errors
+  // Upload States - Typed with <any>
   const [featureFile, setFeatureFile] = useState<any>(null);
   const [trailerFile, setTrailerFile] = useState<any>(null);
+  const [thumbnailFile, setThumbnailFile] = useState<any>(null);
+
   const [previewVideoUrl, setPreviewVideoUrl] = useState<any>(null);
   const [previewTrailerUrl, setPreviewTrailerUrl] = useState<any>(null);
+  const [previewThumbnailUrl, setPreviewThumbnailUrl] = useState<any>(null);
+  
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatusText, setUploadStatusText] = useState("");
@@ -40,14 +44,15 @@ export default function UploadStudio() {
   const [studioFilms, setStudioFilms] = useState<any[]>([]);
   const [isLoadingFilms, setIsLoadingFilms] = useState(false);
   
-  // Storage for existing URLs so we don't have to re-upload if updating metadata
+  // Storage for existing URLs
   const [existingFeatureUrl, setExistingFeatureUrl] = useState<any>(null);
   const [existingTrailerUrl, setExistingTrailerUrl] = useState<any>(null);
   const [existingPosterUrl, setExistingPosterUrl] = useState<any>(null);
 
-  // Refs - Typed with <any>
+  // Refs
   const featureInputRef = useRef<any>(null);
   const trailerInputRef = useRef<any>(null);
+  const thumbnailInputRef = useRef<any>(null);
 
   // Form Data
   const [formData, setFormData] = useState({
@@ -110,7 +115,7 @@ export default function UploadStudio() {
     }
   }, [showEditModal, studioInfo.name]);
 
-  // --- 2. VIDEO VALIDATION ---
+  // --- 2. VALIDATION & HANDLERS ---
   const validateVideoFile = (file: any, isTrailer = false) => {
     return new Promise((resolve) => {
       if (!file.type.startsWith('video/')) {
@@ -167,6 +172,20 @@ export default function UploadStudio() {
     }
   };
 
+  const handleThumbnailUpload = (e: any) => {
+    const file = e.target.files[0];
+    if (file) {
+      const validTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+      if (!validTypes.includes(file.type)) {
+        Swal.fire({ icon: 'error', title: 'Invalid Format', text: 'Only PNG, JPG, and JPEG files are allowed for posters.', background: '#0a0a0a', color: '#ffffff' });
+        e.target.value = null;
+        return;
+      }
+      setThumbnailFile(file);
+      setPreviewThumbnailUrl(URL.createObjectURL(file));
+    }
+  };
+
   const handleSelectFilmToEdit = (film: any) => {
     setIsEditing(true);
     setEditingFilmId(film.id);
@@ -177,6 +196,7 @@ export default function UploadStudio() {
     });
     setPreviewVideoUrl(film.movie_url);
     setPreviewTrailerUrl(film.trailer_url !== film.movie_url ? film.trailer_url : null);
+    setPreviewThumbnailUrl(film.poster_url);
     
     setExistingFeatureUrl(film.movie_url);
     setExistingTrailerUrl(film.trailer_url);
@@ -185,9 +205,7 @@ export default function UploadStudio() {
     setShowEditModal(false);
   };
 
-  const resetState = () => {
-    window.location.reload();
-  };
+  const resetState = () => window.location.reload();
 
   const handleCastChange = (index: number, field: string, value: string) => {
     const newCast: any[] = [...formData.cast];
@@ -201,19 +219,13 @@ export default function UploadStudio() {
     setFormData({ ...formData, cast: newCast });
   };
 
-  // --- 3. BUNNY.NET REAL UPLOAD LOGIC ---
+  // --- 3. UPLOAD LOGIC (BUNNY CDN & SUPABASE STORAGE) ---
   const uploadToBunny = async (file: any, title: string, isTrailer = false) => {
-    if (!BUNNY_API_KEY || !BUNNY_LIBRARY_ID) {
-      throw new Error("Bunny.net API keys are missing. Please check your .env.local file.");
-    }
+    if (!BUNNY_API_KEY || !BUNNY_LIBRARY_ID) throw new Error("Bunny.net API keys are missing.");
 
     const createRes = await fetch(`https://video.bunnycdn.com/library/${BUNNY_LIBRARY_ID}/videos`, {
       method: 'POST',
-      headers: { 
-        'AccessKey': BUNNY_API_KEY, 
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
+      headers: { 'AccessKey': BUNNY_API_KEY, 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({ title: title })
     });
     
@@ -229,8 +241,7 @@ export default function UploadStudio() {
       if (!isTrailer) {
         xhr.upload.onprogress = (event) => {
           if (event.lengthComputable) {
-            const percentComplete = Math.round((event.loaded / event.total) * 100);
-            setUploadProgress(percentComplete);
+            setUploadProgress(Math.round((event.loaded / event.total) * 100));
           }
         };
       }
@@ -249,7 +260,19 @@ export default function UploadStudio() {
     };
   };
 
-  // --- 4. MASTER SUBMIT TO BUNNY & SUPABASE ---
+  const uploadThumbnailToSupabase = async (file: any) => {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Math.random()}.${fileExt}`;
+    const filePath = `posters/${fileName}`;
+    
+    const { error } = await supabase.storage.from('film_assets').upload(filePath, file);
+    if (error) throw new Error("Failed to upload poster image to storage.");
+    
+    const { data } = supabase.storage.from('film_assets').getPublicUrl(filePath);
+    return data.publicUrl;
+  };
+
+  // --- 4. MASTER SUBMIT ---
   const handleSubmit = async () => {
     if (!formData.title || !formData.description) {
       return Swal.fire({ icon: 'error', title: 'Missing Details', text: 'Film Title and Description are required.', background: '#0a0a0a', color: '#ffffff' });
@@ -263,14 +286,25 @@ export default function UploadStudio() {
       let finalTrailerUrl = existingTrailerUrl;
       let finalPosterUrl = existingPosterUrl;
 
-      // Only upload to bunny if a new file was actually selected
+      // 1. Upload Custom Thumbnail (Highest Priority for Poster)
+      if (thumbnailFile) {
+        setUploadStatusText("Transmitting Poster Art...");
+        finalPosterUrl = await uploadThumbnailToSupabase(thumbnailFile);
+      }
+
+      // 2. Upload Main Feature
       if (featureFile) {
         setUploadStatusText("Transmitting Master Film to CDN...");
         const featureData = await uploadToBunny(featureFile, `${formData.title} - Main Feature`, false);
         finalFeatureUrl = featureData.videoUrl;
-        finalPosterUrl = featureData.thumbnailUrl;
+        
+        // Fallback to Bunny thumbnail ONLY if no custom thumbnail exists and wasn't just uploaded
+        if (!finalPosterUrl) {
+          finalPosterUrl = featureData.thumbnailUrl;
+        }
       }
 
+      // 3. Upload Trailer
       if (trailerFile) {
         setUploadStatusText("Transmitting Promotional Trailer...");
         const trailerData = await uploadToBunny(trailerFile, `${formData.title} - Trailer`, true);
@@ -281,7 +315,6 @@ export default function UploadStudio() {
       const generatedSlug = formData.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
 
       if (isEditing) {
-        // UPDATE EXISTING RECORD
         const { error } = await supabase.from('uuunivvr_films').update({
           title: formData.title,
           slug: generatedSlug,
@@ -298,12 +331,9 @@ export default function UploadStudio() {
         Swal.fire({
           icon: 'success', title: 'Update Successful', text: 'Your masterpiece details have been updated.',
           background: '#0a0a0a', color: '#ffffff', confirmButtonColor: '#dc2626'
-        }).then(() => {
-          window.location.href = `/film/${generatedSlug}`;
-        });
+        }).then(() => window.location.href = `/film/${generatedSlug}`);
 
       } else {
-        // INSERT NEW RECORD
         const { error } = await supabase.from('uuunivvr_films').insert([{
           title: formData.title,
           slug: generatedSlug,
@@ -322,9 +352,7 @@ export default function UploadStudio() {
         Swal.fire({
           icon: 'success', title: 'Distribution Successful', text: 'Your film is now streaming globally.',
           background: '#0a0a0a', color: '#ffffff', confirmButtonColor: '#dc2626'
-        }).then(() => {
-          window.location.href = `/film/${generatedSlug}`;
-        });
+        }).then(() => window.location.href = `/film/${generatedSlug}`);
       }
 
     } catch (err: any) { 
@@ -364,12 +392,12 @@ export default function UploadStudio() {
             </button>
 
             {/* EDIT EXISTING BUTTON */}
-            <button onClick={() => setShowEditModal(true)} className="group relative bg-[#0a0a0a] border border-white/10 hover:border-white/30 w-full max-w-sm h-64 rounded-2xl flex flex-col items-center justify-center transition-all">
+            <button onClick={() => setShowEditModal(true)} className="group relative bg-[#0a0a0a] border border-white/10 hover:border-red-500/50 w-full max-w-sm h-64 rounded-2xl flex flex-col items-center justify-center transition-all hover:shadow-[0_0_30px_rgba(220,38,38,0.1)]">
               <div className="w-20 h-20 bg-neutral-900 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                <Edit3 className="text-white" size={32} />
+                <Edit3 className="text-red-500" size={32} />
               </div>
               <span className="text-white font-black tracking-widest uppercase text-lg">Edit Existing Film</span>
-              <span className="text-neutral-500 text-xs tracking-widest uppercase mt-2">Modify details & cast</span>
+              <span className="text-neutral-500 text-xs tracking-widest uppercase mt-2">Modify details & assets</span>
             </button>
           </div>
         </div>
@@ -377,17 +405,17 @@ export default function UploadStudio() {
         {/* MODAL FOR SELECTING A FILM TO EDIT */}
         {showEditModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="bg-[#0a0a0a] border border-white/10 w-full max-w-2xl rounded-2xl flex flex-col overflow-hidden max-h-[80vh] shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+            <div className="bg-[#0a0a0a] border border-red-900/30 w-full max-w-2xl rounded-2xl flex flex-col overflow-hidden max-h-[80vh] shadow-[0_0_50px_rgba(0,0,0,0.5)]">
               <div className="p-6 border-b border-white/5 flex items-center justify-between">
                 <h2 className="text-xl font-black text-white uppercase tracking-widest">Select Title to Edit</h2>
-                <button onClick={() => setShowEditModal(false)} className="text-neutral-500 hover:text-white transition-colors"><X size={24} /></button>
+                <button onClick={() => setShowEditModal(false)} className="text-neutral-500 hover:text-red-500 transition-colors"><X size={24} /></button>
               </div>
               
               <div className="p-6 overflow-y-auto flex-grow custom-scrollbar">
                 {isLoadingFilms ? (
                   <div className="flex flex-col items-center justify-center py-12 gap-3 text-neutral-500">
                     <Loader2 size={32} className="animate-spin text-red-600" />
-                    <span className="text-sm font-bold tracking-widest uppercase">Fetching Vault Records...</span>
+                    <span className="text-sm font-bold tracking-widest uppercase text-red-500/80">Fetching Vault Records...</span>
                   </div>
                 ) : studioFilms.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 gap-3 text-neutral-500">
@@ -411,7 +439,7 @@ export default function UploadStudio() {
                         </div>
                         <div className="flex flex-col">
                           <span className="text-white font-bold line-clamp-1">{film.title}</span>
-                          <span className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Click to Modify</span>
+                          <span className="text-[10px] text-red-500 uppercase tracking-widest mt-1">Click to Modify</span>
                         </div>
                       </button>
                     ))}
@@ -437,11 +465,6 @@ export default function UploadStudio() {
         <div className="w-full h-[60%] relative bg-black">
           <video src={previewVideoUrl} autoPlay loop muted className="w-full h-full object-cover opacity-60" />
           <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-transparent to-transparent"></div>
-          {isEditing && !featureFile && (
-             <div className="absolute top-4 left-4 z-20 bg-black/60 backdrop-blur px-3 py-1 rounded-full text-[10px] font-bold text-blue-400 uppercase tracking-widest border border-blue-500/30">
-               Loaded From Mainframe
-             </div>
-          )}
         </div>
 
         {/* Live Data Render */}
@@ -461,7 +484,7 @@ export default function UploadStudio() {
           </p>
 
           <div className="flex items-center gap-3 mb-8">
-             <button className="bg-white text-black px-6 py-2.5 rounded-full font-black uppercase tracking-widest text-xs flex items-center gap-2"><Play size={14} fill="black"/> Watch</button>
+             <button className="bg-red-700 hover:bg-red-600 text-white px-6 py-2.5 rounded-full font-black uppercase tracking-widest text-xs flex items-center gap-2 transition-colors"><Play size={14} fill="currentColor"/> Watch</button>
           </div>
 
           <h3 className="text-sm font-black text-white uppercase tracking-widest mb-4">Cast & Crew</h3>
@@ -485,10 +508,10 @@ export default function UploadStudio() {
       <div className="w-full md:w-1/2 min-h-screen p-8 md:p-16 flex flex-col overflow-y-auto custom-scrollbar relative">
         <div className="flex items-center justify-between mb-12">
           <h2 className="text-2xl font-black uppercase tracking-widest text-white flex items-center gap-3">
-            {isEditing ? <Edit3 className="text-blue-500" /> : <Film className="text-red-600" />} 
+            {isEditing ? <Edit3 className="text-red-600" /> : <Film className="text-red-600" />} 
             {isEditing ? "Modify Data" : "Distribution Data"}
           </h2>
-          <button onClick={resetState} className="text-neutral-500 hover:text-white font-bold tracking-widest uppercase text-xs transition-colors bg-[#111] px-4 py-2 rounded">
+          <button onClick={resetState} className="text-neutral-500 hover:text-red-500 font-bold tracking-widest uppercase text-xs transition-colors bg-[#111] px-4 py-2 rounded">
             {isEditing ? "Cancel Edit" : "Exit"}
           </button>
         </div>
@@ -505,7 +528,7 @@ export default function UploadStudio() {
                 <div className="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center"><ShieldCheck size={16} className="text-red-500"/></div>
               )}
               <span className="text-white font-bold tracking-wide">{studioInfo.name}</span>
-              {studioInfo.isStaff && <CheckCircle2 size={16} className="text-blue-500 ml-auto" />}
+              {studioInfo.isStaff && <CheckCircle2 size={16} className="text-red-500 ml-auto" />}
             </div>
           </div>
 
@@ -519,13 +542,36 @@ export default function UploadStudio() {
             <textarea rows={4} placeholder="Describe the plot..." className="bg-[#0a0a0a] border border-white/10 rounded-xl p-4 text-white focus:border-red-600 outline-none transition-colors shadow-inner resize-none" value={formData.description} onChange={(e: any) => setFormData({...formData, description: e.target.value})} />
           </div>
 
+          {/* Thumbnail / Poster Upload */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] font-black text-neutral-500 tracking-widest uppercase">Cinematic Poster / Banner (PNG, JPG)</label>
+              {previewThumbnailUrl && <span className="text-[10px] text-red-500 font-bold uppercase tracking-widest flex items-center gap-1"><CheckCircle2 size={10}/> Attached</span>}
+            </div>
+            <input type="file" accept="image/png, image/jpeg, image/jpg" className="hidden" ref={thumbnailInputRef} onChange={handleThumbnailUpload} />
+            <button type="button" onClick={() => thumbnailInputRef.current.click()} className="bg-[#0a0a0a] border border-white/10 border-dashed hover:border-red-500 rounded-xl p-6 text-white transition-colors flex flex-col items-center justify-center gap-2 relative overflow-hidden min-h-[120px]">
+              {previewThumbnailUrl ? (
+                <>
+                  <div className="absolute inset-0 opacity-30"><img src={previewThumbnailUrl} className="w-full h-full object-cover blur-sm"/></div>
+                  <ImageIcon size={24} className="text-white relative z-10" />
+                  <span className="text-xs font-bold text-white uppercase tracking-widest relative z-10">Replace Poster Art</span>
+                </>
+              ) : (
+                <>
+                  <ImageIcon size={24} className="text-neutral-500" />
+                  <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">Upload Custom Poster</span>
+                </>
+              )}
+            </button>
+          </div>
+
           {/* Feature File Replace (Only visible in EDIT mode) */}
           {isEditing && (
             <div className="flex flex-col gap-2">
               <label className="text-[10px] font-black text-neutral-500 tracking-widest uppercase">Main Feature Film (Optional Replacement)</label>
               <input type="file" accept="video/mp4,video/x-m4v,video/*" className="hidden" ref={featureInputRef} onChange={handleFeatureUpload} />
               <button type="button" onClick={() => featureInputRef.current.click()} className="bg-[#0a0a0a] border border-white/10 border-dashed hover:border-red-500 rounded-xl p-6 text-white transition-colors flex flex-col items-center justify-center gap-2">
-                <UploadCloud size={24} className={featureFile ? "text-green-500" : "text-neutral-500"} />
+                <UploadCloud size={24} className={featureFile ? "text-red-500" : "text-neutral-500"} />
                 <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">
                   {featureFile ? "New Master File Queued" : "Replace Existing Master File"}
                 </span>
@@ -537,11 +583,11 @@ export default function UploadStudio() {
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <label className="text-[10px] font-black text-neutral-500 tracking-widest uppercase">Promotional Trailer (Max 60s)</label>
-              {previewTrailerUrl && <span className="text-[10px] text-green-500 font-bold uppercase tracking-widest flex items-center gap-1"><CheckCircle2 size={10}/> Attached</span>}
+              {previewTrailerUrl && <span className="text-[10px] text-red-500 font-bold uppercase tracking-widest flex items-center gap-1"><CheckCircle2 size={10}/> Attached</span>}
             </div>
             <input type="file" accept="video/mp4,video/x-m4v,video/*" className="hidden" ref={trailerInputRef} onChange={handleTrailerUpload} />
             <button type="button" onClick={() => trailerInputRef.current.click()} className="bg-[#0a0a0a] border border-white/10 border-dashed hover:border-red-500 rounded-xl p-6 text-white transition-colors flex flex-col items-center justify-center gap-2">
-              <UploadCloud size={24} className={previewTrailerUrl ? "text-green-500" : "text-neutral-500"} />
+              <UploadCloud size={24} className={previewTrailerUrl ? "text-white" : "text-neutral-500"} />
               <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">
                 {previewTrailerUrl ? (isEditing ? "Replace Current Trailer" : "Replace Trailer") : "Upload Trailer File"}
               </span>
@@ -582,7 +628,7 @@ export default function UploadStudio() {
               type="button" 
               onClick={handleSubmit} 
               disabled={isUploading}
-              className={`w-full text-white font-black py-5 rounded-xl transition-all uppercase tracking-widest disabled:opacity-50 disabled:cursor-wait relative overflow-hidden ${isEditing ? 'bg-blue-600 hover:bg-blue-500 shadow-[0_0_20px_rgba(37,99,235,0.3)]' : 'bg-red-700 hover:bg-red-600 shadow-[0_0_20px_rgba(220,38,38,0.3)]'}`}
+              className={`w-full text-white font-black py-5 rounded-xl transition-all uppercase tracking-widest disabled:opacity-50 disabled:cursor-wait relative overflow-hidden bg-red-700 hover:bg-red-600 shadow-[0_0_20px_rgba(220,38,38,0.3)]`}
             >
               {isUploading ? (
                 <div className="flex flex-col items-center justify-center gap-1 relative z-10">
@@ -598,7 +644,7 @@ export default function UploadStudio() {
               
               {/* Progress Bar Background */}
               {isUploading && (featureFile || trailerFile) && (
-                <div className={`absolute top-0 left-0 h-full transition-all duration-200 ease-out ${isEditing ? 'bg-blue-900/50' : 'bg-red-900/50'}`} style={{ width: `${uploadProgress}%` }}></div>
+                <div className="absolute top-0 left-0 h-full transition-all duration-200 ease-out bg-red-950/80" style={{ width: `${uploadProgress}%` }}></div>
               )}
             </button>
           </div>
