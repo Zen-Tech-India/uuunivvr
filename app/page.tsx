@@ -13,6 +13,10 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
 
+  useEffect(() => {
+    document.title = "Uuuunivvr OTT Platform";
+  }, []);
+
   // --- MANUAL EMAIL/PASSWORD LOGIN ---
   // Fix: Explicitly type 'e' as 'any'
   const handleManualLogin = async (e: any) => {
